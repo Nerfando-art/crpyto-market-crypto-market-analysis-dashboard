@@ -1,142 +1,217 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { motion } from "framer-motion";
 
 function Card({ children, darkMode }) {
   return (
-    <div className={`border p-4 rounded-lg shadow-md ${darkMode ? "bg-gray-800 text-white" : "bg-white text-black"}`}>
+    <div className={`border p-4 rounded-lg shadow-md transition-all duration-300 
+      ${darkMode
+        ? "bg-[#1e1e1e] text-[#e0e0e0] border-[#333] shadow-lg shadow-gray-900/20"
+        : "bg-white text-black border-gray-300 shadow-md"
+      }`}>
       {children}
     </div>
   );
 }
 
-function CardContent({ children }) {
-  return <div className="p-2">{children}</div>;
-}
-
-function Button({ children, className, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 ${className} rounded-md hover:scale-105 transition-transform`}
-    >
-      {children}
-    </button>
-  );
-}
-
-const API_BASE = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=";
+const darkThemeClasses = "bg-[#141414] text-[#e0e0e0] transition-colors duration-300";
+const lightThemeClasses = "bg-gray-100 text-black transition-colors duration-300";
 
 export default function CryptoDashboard() {
-  const [cryptoData, setCryptoData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortOption, setSortOption] = useState("market_cap_desc");
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("darkMode") === "true");
-  const [currency, setCurrency] = useState("usd");
-  const [viewMode, setViewMode] = useState("grid");
-  const [loading, setLoading] = useState(true);
+  const [favorites, setFavorites] = useState(
+    () => JSON.parse(localStorage.getItem("favorites")) || []
+  );
+  const [globalStats, setGlobalStats] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const coinsPerPage = 10;
 
+  // search state
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchResults = searchTerm
+    ? filteredData
+        .filter((coin) =>
+          coin.name.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .slice(0, 10)
+    : [];
+
+  const [darkMode] = useState(
+    () => localStorage.getItem("darkMode") === "true"
+  );
+  const currency = "usd";
+
+  // Fetch data
   useEffect(() => {
-    fetchCryptoData();
-    const interval = setInterval(fetchCryptoData, 30000);
+    const fetchAll = () => {
+      fetchCryptoData();
+      fetchGlobalStats();
+    };
+    fetchAll();
+    const interval = setInterval(fetchCryptoData, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currency]);
 
-  useEffect(() => {
-    filterAndSortData();
-  }, [searchQuery, cryptoData, sortOption]);
-
   const fetchCryptoData = async () => {
-    setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}${currency}&order=market_cap_desc&per_page=20&page=1&sparkline=true&price_change_percentage=24h`);
-      const data = await response.json();
-      setCryptoData(data);
+      const res = await fetch(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&order=market_cap_desc&per_page=100&page=1&sparkline=true&price_change_percentage=24h`
+      );
+      const data = await res.json();
       setFilteredData(data);
-    } catch (error) {
-      console.error("Error fetching crypto data:", error);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error("Error fetching crypto data:", err);
     }
   };
 
-  const filterAndSortData = () => {
-    let filtered = cryptoData.filter((crypto) =>
-      crypto.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const sorters = {
-      price_asc: (a, b) => a.current_price - b.current_price,
-      price_desc: (a, b) => b.current_price - a.current_price,
-      market_cap_asc: (a, b) => a.market_cap - b.market_cap,
-      market_cap_desc: (a, b) => b.market_cap - a.market_cap,
-    };
-
-    filtered.sort(sorters[sortOption]);
-    setFilteredData(filtered);
+  const fetchGlobalStats = async () => {
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/global");
+      const json = await res.json();
+      setGlobalStats(json.data);
+    } catch (err) {
+      console.error("Error fetching global stats:", err);
+    }
   };
 
+  const toggleFavorite = (coinId) => {
+    let updated = [...favorites];
+    if (updated.includes(coinId)) {
+      updated = updated.filter((id) => id !== coinId);
+    } else {
+      updated.push(coinId);
+    }
+    setFavorites(updated);
+    localStorage.setItem("favorites", JSON.stringify(updated));
+  };
+
+  const currentData = filteredData.slice(
+    (currentPage - 1) * coinsPerPage,
+    currentPage * coinsPerPage
+  );
+
   return (
-    <div className={`${darkMode ? "bg-gray-900 text-white" : "bg-gray-100 text-black"} min-h-screen p-6`}>
-      <div className="flex justify-between mb-4">
-        <Button onClick={() => setDarkMode((prev) => {
-          localStorage.setItem("darkMode", !prev);
-          return !prev;
-        })} className={`${darkMode ? "bg-yellow-400 text-black" : "bg-gray-700 text-white"}`}>
-          {darkMode ? "☀ Light Mode" : "🌙 Dark Mode"}
-        </Button>
+    <div className={`${darkMode ? darkThemeClasses : lightThemeClasses} min-h-screen p-6`}>
+      {/* Global Market Stats */}
+      {globalStats && (
+        <div className="bg-gray-900 p-4 rounded-lg text-center text-white mb-6">
+          <h2 className="text-xl font-bold">🌎 Global Crypto Market</h2>
+          <p>Total Market Cap: ${globalStats.total_market_cap.usd.toLocaleString()}</p>
+          <p>BTC Dominance: {globalStats.market_cap_percentage.btc.toFixed(2)}%</p>
+          <p>24h Volume: ${globalStats.total_volume.usd.toLocaleString()}</p>
+        </div>
+      )}
 
-        <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="p-2 border rounded-md">
-          <option value="usd">USD</option>
-          <option value="eur">EUR</option>
-          <option value="gbp">GBP</option>
-        </select>
+      {/* Navigation + Search Bar */}
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+        {/* Placeholder nav buttons */}
+        <div className="flex space-x-2">
+          <button className="px-4 py-2 bg-blue-500 text-white rounded">Page 1</button>
+          <button className="px-4 py-2 bg-blue-500 text-white rounded">Page 2</button>
+          <button className="px-4 py-2 bg-blue-500 text-white rounded">Page 3</button>
+        </div>
 
-        <select value={sortOption} onChange={(e) => setSortOption(e.target.value)} className="p-2 border rounded-md">
-          <option value="market_cap_desc">Market Cap: High to Low</option>
-          <option value="market_cap_asc">Market Cap: Low to High</option>
-          <option value="price_desc">Price: High to Low</option>
-          <option value="price_asc">Price: Low to High</option>
-        </select>
-
-        <Button onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")} className="bg-gray-500 text-white">
-          {viewMode === "grid" ? "📋 List View" : "🔳 Grid View"}
-        </Button>
+        {/* Search */}
+        <div className="relative w-64">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search cryptos..."
+            className={`w-full p-2 rounded border ${
+              darkMode 
+                ? "bg-[#1e1e1e] border-[#333] placeholder-gray-500" 
+                : "bg-white border-gray-300 placeholder-gray-400"
+            }`}
+          />
+          {searchResults.length > 0 && (
+            <ul className={`absolute right-0 mt-1 w-full max-h-60 overflow-y-auto rounded shadow-lg z-10
+              ${darkMode ? "bg-[#1e1e1e]" : "bg-white"}`}>
+              {searchResults.map((coin) => (
+                <li key={coin.id} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700">
+                  <Link
+                    to={`/crypto/${encodeURIComponent(coin.id)}`}
+                    className="block"
+                    onClick={() => setSearchTerm("")}
+                  >
+                    {coin.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
-      {loading ? (
-        <p className="text-center text-gray-500">Loading...</p>
+      {/* Top 10 by Market Cap */}
+      <div className="bg-[#1e1e1e] p-4 rounded-lg text-white mb-6">
+        <h2 className="text-lg font-bold">🏆 Top 10 Cryptos by Market Cap</h2>
+        <div className="flex space-x-4 overflow-x-auto mt-2">
+          {filteredData.slice(0, 10).map((coin) => (
+            <Link to={`/crypto/${encodeURIComponent(coin.id)}`} key={coin.id}>
+              <div className="p-3 min-w-[120px] bg-[#222] rounded-md text-center">
+                <img
+                  src={coin.image}
+                  alt={coin.name}
+                  className="w-8 h-8 mx-auto mb-1"
+                />
+                <p className="text-sm font-semibold">{coin.name}</p>
+                <p className="text-xs text-gray-400">#{coin.market_cap_rank}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Grid */}
+      {currentData.length === 0 ? (
+        <p className="text-center text-gray-400 my-8">
+          ⚠ No cryptocurrencies available.
+        </p>
       ) : (
-        <div className={viewMode === "grid" ? "grid grid-cols-3 gap-4" : "flex flex-col"}>
-          {filteredData.map((crypto) => (
-            <Link to={`/crypto/${crypto.id}`} key={crypto.id}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {currentData.map((crypto) => (
+            <Link to={`/crypto/${encodeURIComponent(crypto.id)}`} key={crypto.id}>
               <Card darkMode={darkMode}>
-                <CardContent>
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-bold">{crypto.name}</h2>
-                    <motion.span className="text-green-500" animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 0.5 }}>
-                      ${crypto.current_price.toLocaleString()}
-                    </motion.span>
-                  </div>
-                  <p className="text-sm text-gray-500">Market Cap: ${crypto.market_cap.toLocaleString()}</p>
-                  <span className={`text-lg ${crypto.price_change_percentage_24h >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {crypto.price_change_percentage_24h >= 0 ? "🔺" : "🔻"} {crypto.price_change_percentage_24h.toFixed(2)}%
-                  </span>
-                  {crypto.sparkline_in_7d && (
-                    <LineChart width={250} height={100} data={crypto.sparkline_in_7d.price.map((price, index) => ({ index, price }))}>
-                      <XAxis dataKey="index" hide />
-                      <YAxis hide />
-                      <Tooltip />
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <Line type="monotone" dataKey="price" stroke="#8884d8" />
-                    </LineChart>
-                  )}
-                </CardContent>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    toggleFavorite(crypto.id);
+                  }}
+                  className="absolute top-2 right-2 text-yellow-400 text-2xl"
+                >
+                  {favorites.includes(crypto.id) ? "⭐" : "☆"}
+                </button>
+                <div className="p-4">
+                  <h2 className="text-xl font-bold">{crypto.name}</h2>
+                  <p>${crypto.current_price.toLocaleString()}</p>
+                </div>
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {filteredData.length > 0 && (
+        <div className="flex justify-center space-x-4 mt-6">
+          <button
+            onClick={() => setCurrentPage((p) => p - 1)}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+          >
+            ◀ Previous
+          </button>
+          <span className="text-lg">
+            {currentPage} / {Math.ceil(filteredData.length / coinsPerPage)}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => p + 1)}
+            disabled={currentPage >= Math.ceil(filteredData.length / coinsPerPage)}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+          >
+            Next ▶
+          </button>
         </div>
       )}
     </div>
